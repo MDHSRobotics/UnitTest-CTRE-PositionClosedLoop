@@ -7,16 +7,12 @@
 
 package org.usfirst.frc.team4141.robot;
 
-import edu.wpi.first.wpilibj.command.Command;
-import edu.wpi.first.wpilibj.command.Scheduler;
-import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.*;
-import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
-import edu.wpi.first.wpilibj.Joystick.AxisType;
 
 /**
  * Example demonstrating the Position closed-loop servo.
@@ -41,14 +37,13 @@ import edu.wpi.first.wpilibj.Joystick.AxisType;
  *
  * Tweak the PID gains accordingly. This can be done by:
  *    1. Changing the values in the calls below to talon.config_kP, talon.config_kI, and talon.config_kD
- *    2. Use the roboRIO web-based configuration tool to quickly change the gains on the fly
- *       without having to re-deploy the code.
+ *    2. Use the Tuner tool to quickly change the gains on the fly without having to re-deploy the code.
  * 
  * Feedback:
  * 		RoboRio Log - prints the motor output % and the current error (if in closed loop)
  * 
  * 		SmartDashboard - Displays motor output, current error, and PID constants
- * 						 Note: it is preferable to display the error widget as a graph
+ * 						 Note: it is preferable to display these as a graphs
  */
 
 //  This project was based on the CTRE Sample Phoenix program on their website:
@@ -56,8 +51,7 @@ import edu.wpi.first.wpilibj.Joystick.AxisType;
 //  The base program was modified somewhat to be more readable and to display information on the SmartDashboard
 
 
-
-public class Robot extends IterativeRobot {
+public class Robot extends TimedRobot {
 
 	int speedControllerID = 1;								// ID for the Talon speed controller to use
 	TalonSRX talon = new TalonSRX(speedControllerID);		
@@ -65,7 +59,11 @@ public class Robot extends IterativeRobot {
 	StringBuilder stringBuffer = new StringBuilder();		// Buffer to hold string to output to RioLog
 	int nLoops = 0;											// Keep track of # loops called during TeleOp
 	boolean wasPrevPressButton1 = false;					// Keep track of whether previous button was Button 1
-	double targetPositionRotations;							// Target # rotations for closed loop mode
+	double targetPositionUnits;								// Target position in sensor units
+	//TODO Read target number of rotations from a text entry field on the SmartDashboard (instead of hardcoded constant)
+	double targetRotations = 10.0;							// Target # rotations for closed loop mode
+	//TODO Set unitPerRevolution based on the sensor type rather than hard-coded constant
+	double unitsPerRevolution = 4096;						// Number of sensor units per revolution
 
 	public void robotInit() {
 
@@ -73,10 +71,10 @@ public class Robot extends IterativeRobot {
 		talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, Constants.kPIDLoopIdx,
 				Constants.kTimeoutMs);
 
-		// Choose to ensure sensor is positive when output is positive
+		// Set appropriately to ensure sensor is positive when output is positive
 		talon.setSensorPhase(Constants.kSensorPhase);
 
-		// Choose based on what direction you want forward/positive to be.
+		// Set based on what direction you want forward/positive to be.
 		// This does not affect sensor phase.
 		talon.setInverted(Constants.kMotorInvert);
 
@@ -153,20 +151,20 @@ public class Robot extends IterativeRobot {
 		stringBuffer.append("%"); 
 
 		stringBuffer.append("\tCurrent Position: ");
-		stringBuffer.append(talon.getSelectedSensorPosition(0));
+		stringBuffer.append(talon.getSelectedSensorPosition(Constants.kPIDLoopIdx));
 		stringBuffer.append("units");
 
-		// On button1 press enter closed-loop mode on target position (but ignore subsequent presses)
+		// On button1 press, enter closed-loop mode on target position (but ignore sequential presses)
 		if (!wasPrevPressButton1 && button1Pressed) {
 			// Position mode - button1 just pressed - display it in RioLog
 			stringBuffer.append("Button 1 pressed\n");
 			
-			// Compute the target position = 10 Rotations * 4096 units/rev in either direction
-			targetPositionRotations = yAxisValue * 10.0 * 4096;
-			talon.set(ControlMode.Position, targetPositionRotations);
+			// Scale target based on max joystick value - express in sensor units
+			targetPositionUnits = yAxisValue * targetRotations * unitsPerRevolution;
+			talon.set(ControlMode.Position, targetPositionUnits);
 			
 			// Display the target position on the SmartDashboard
-			SmartDashboard.putNumber("targetPositionRotations", targetPositionRotations);
+			SmartDashboard.putNumber("Target Position (units)", targetPositionUnits);
 		}
 		
 		// On button2 just straight drive
@@ -188,11 +186,13 @@ public class Robot extends IterativeRobot {
 			stringBuffer.append("units");
 
 			stringBuffer.append("\tTarget: ");
-			stringBuffer.append(targetPositionRotations);
+			stringBuffer.append(targetPositionUnits);
 			stringBuffer.append("units"); /* units */
 
 			// Display error in SmartDashboard
 			SmartDashboard.putNumber("Current Closed Loop Error", currentClosedLoopError);
+
+			//TODO Display the current position in SmartDashboard
 		}
 
 		// Print every ten loops, printing too much too fast is generally bad for performance
